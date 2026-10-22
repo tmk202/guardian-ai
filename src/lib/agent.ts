@@ -5,7 +5,7 @@
 //
 // The brain is any chat model via the Vercel AI SDK; the hands are the PayPal
 // Agent Toolkit tools. Sensitive tools pass the guardrail approval layer.
-import { generateText, stepCountIs } from "ai";
+import { generateText } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { createPayPalToolkit } from "./paypal";
 
@@ -32,14 +32,14 @@ export async function runGuardian(prompt: string) {
     system: SYSTEM_PROMPT,
     prompt,
     tools: toolkit.getTools(),
-    stopWhen: stepCountIs(10),
+    maxSteps: 10, // AI SDK v4 (the Agent Toolkit 1.x line targets v4)
   });
   return {
     text: result.text,
     // Tool-call trail powers the activity log panel in the UI.
     steps: result.steps.map((s) => ({
-      toolCalls: s.toolCalls.map((c) => ({ toolName: c.toolName, args: c.input })),
-      toolResults: s.toolResults.map((r) => ({ toolName: r.toolName })),
+      toolCalls: s.toolCalls.map((c) => ({ toolName: c.toolName, args: c.args })),
+      toolResults: (s.toolResults as any[]).map((r: any) => ({ toolName: r.toolName })),
     })),
   };
 }
