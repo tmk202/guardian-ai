@@ -22,6 +22,10 @@ import {
   type CollectionSkip,
   type CreatedProposal,
 } from "../workers/collections";
+import {
+  updateCustomerMemories,
+  type CustomerUpdateResult,
+} from "../customers";
 
 export const COLLECTIONS_SCAN_JOB = "collections-scan";
 const CLOSED_CASE = /^(RESOLVED|CLOSED|DENIED|CANCELLED)/i;
@@ -43,6 +47,8 @@ export interface CollectionsScanReport {
   blockedDispute: string[];
   skippedPaid: string[];
   skipped: CollectionSkip[];
+  /** Customer Memory (kind B) refresh from the same invoice read (Phase 4D) */
+  customersUpdated: CustomerUpdateResult | null;
   notes: string[];
 }
 
@@ -95,6 +101,7 @@ export async function runCollectionsScan(
     blockedDispute: [],
     skippedPaid: [],
     skipped: [],
+    customersUpdated: null,
     notes: [],
   };
 
@@ -141,6 +148,36 @@ export async function runCollectionsScan(
     return report;
   }
   report.scanned = items.length;
+
+  // Customer Memory B refresh (Phase 4D, §2.2 B): the same invoice read
+  // that plans the chase also maintains one record per customer.
+  // Wrapped: a memory failure must never take the collections scan down.
+  try {
+    const caseIds = new Map<string, string[]>();
+    for (const row of store.cases.list(merchantId)) {
+      if (CLOSED_CASE.test(row.status ?? "")) continue;
+      try {
+        const body = JSON.parse(row.body_json) as Record<string, any>;
+        const inv = body.related_invoice ?? body.invoice_id;
+        if (typeof inv === "string" && inv) {
+          const arr = caseIds.get(inv) ?? [];
+          arr.push(row.id);
+          caseIds.set(inv, arr);
+        }
+      } catch {
+        /* an unparseable case body links nothing */
+      }
+    }
+    report.customersUpdated = updateCustomerMemories(store, merchantId, items, {
+      now,
+      updatedBy: COLLECTIONS_SCAN_JOB,
+      caseIdsByInvoice: caseIds,
+    });
+  } catch (e) {
+    report.notes.push(
+      `Customer memory update failed (${e instanceof Error ? e.message.slice(0, 160) : String(e)}); collections planning continued without it.`
+    );
+  }
 
   const plan = planCollections(items, {
     now,

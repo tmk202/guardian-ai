@@ -120,6 +120,11 @@ export async function listDisputesRest(): Promise<any> {
   return apiGet("/v1/customer/disputes?page_size=50");
 }
 
+/** GET /v1/notifications/webhooks — webhooks registered on the app (beta self-check). */
+export async function listWebhooksRest(): Promise<any> {
+  return apiGet("/v1/notifications/webhooks");
+}
+
 /** GET /v1/reporting/transactions — requires the Transaction Search scope. */
 export async function listTransactionsRest(args: {
   start_date: string;
