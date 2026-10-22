@@ -113,11 +113,13 @@ export interface GuardianStore {
   };
   memory: {
     add(e: Omit<MemoryEntryRow, "id" | "updated_at">): number;
+    update(id: number, fields: Partial<MemoryEntryRow>): void;
     list(merchantId: string, kind?: string): MemoryEntryRow[];
   };
   cases: {
     upsert(row: Omit<CaseRow, "updated_at">): void;
     get(id: string): CaseRow | undefined;
+    list(merchantId: string): CaseRow[];
   };
   approvals: {
     insert(row: ApprovalRow): void;
@@ -251,6 +253,12 @@ export class SqliteGuardianStore implements GuardianStore {
           .run(e.merchant_id, e.kind, e.entity_key, e.body_json, e.source, e.confidence, e.superseded_by, nowIso());
         return Number(r.lastInsertRowid);
       },
+      update: (id, fields) => {
+        const cols = Object.keys(fields).filter((c) => c !== "id");
+        if (!cols.length) return;
+        const sql = `UPDATE memory_entries SET ${cols.map((c) => `${c} = ?`).join(", ")}, updated_at = ? WHERE id = ?`;
+        d.prepare(sql).run(...cols.map((c) => (fields as Record<string, unknown>)[c] as never), nowIso(), id);
+      },
       list: (merchantId, kind) =>
         (kind
           ? d.prepare("SELECT * FROM memory_entries WHERE merchant_id = ? AND kind = ? ORDER BY id DESC").all(merchantId, kind)
@@ -265,6 +273,8 @@ export class SqliteGuardianStore implements GuardianStore {
         ).run(row.id, row.merchant_id, row.body_json, row.deadline_at, row.status, nowIso());
       },
       get: (id) => d.prepare("SELECT * FROM cases WHERE id = ?").get(id) as CaseRow | undefined,
+      list: (merchantId) =>
+        d.prepare("SELECT * FROM cases WHERE merchant_id = ? ORDER BY deadline_at").all(merchantId) as unknown as CaseRow[],
     };
     this.approvals = {
       insert: (row) => {
