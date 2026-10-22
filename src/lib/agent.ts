@@ -11,6 +11,12 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createPayPalToolkit } from "./paypal";
 import { runDemo } from "./demo";
 import { registerCoreTools, wrapToolsWithExecutor } from "./tools";
+import {
+  buildCoordinatorPrompt,
+  COORDINATOR_PROMPT_VERSION,
+} from "./prompts/coordinator";
+
+export { COORDINATOR_PROMPT_VERSION };
 
 // The brain is provider-agnostic (Vercel AI SDK). Pick with AI_PROVIDER:
 // - "openai": key from AI_API_KEY or OPENAI_API_KEY, model default gpt-4o-mini
@@ -32,20 +38,23 @@ function pickModel() {
   return openai(process.env.AI_MODEL || "gpt-4o-mini");
 }
 
-export const SYSTEM_PROMPT = `You are Guardian, an AI employee that operates the user's PayPal (sandbox) account.
+// Coordinator system prompt v1 (ARCHITECTURE-DETAIL.md §3.1 + charter §3.0)
+// lives in lib/prompts/coordinator.ts as a versioned asset. SYSTEM_PROMPT
+// keeps the old export name, built with the sandbox shop's defaults; the
+// live path rebuilds it per call so the date is always current.
+const MERCHANT_TIMEZONE = "Asia/Saigon";
 
-Your three jobs:
-1. INVOICES — When asked, create and send PayPal invoices, list unpaid/overdue ones,
-   and send polite reminders (reminders are limited to 2 per day per invoice).
-2. DISPUTES — When a dispute exists, read it, gather the related order and shipment
-   tracking, and draft an evidence-based response for the user to approve.
-   Never submit evidence or accept a claim without explicit user approval.
-3. MONEY REPORT — Summarize transactions: what came in, what is unpaid, what looks held.
+function coordinatorVars() {
+  return {
+    merchantName: "Test Store",
+    paypalEmail:
+      process.env.PAYPAL_SANDBOX_BUSINESS_EMAIL || "sandbox business account",
+    date: new Date().toLocaleDateString("en-CA", { timeZone: MERCHANT_TIMEZONE }),
+    timezone: MERCHANT_TIMEZONE,
+  };
+}
 
-Rules:
-- Always use the PayPal tools to get real data. Never invent amounts, IDs, dates or statuses.
-- Before any refund, dispute acceptance, or evidence submission, stop and ask the user to approve.
-- Answer in the user's language, briefly, with the key numbers first.`;
+export const SYSTEM_PROMPT = buildCoordinatorPrompt(coordinatorVars());
 
 export async function runGuardian(prompt: string) {
   // No LLM key configured -> demo mode: a scripted walkthrough built from
@@ -61,12 +70,12 @@ export async function runGuardian(prompt: string) {
   registerCoreTools();
   const result = await generateText({
     model: pickModel(),
-    system: SYSTEM_PROMPT,
+    system: buildCoordinatorPrompt(coordinatorVars()),
     prompt,
     // Every tool call passes the executor (validation, approval gate for
     // SENSITIVE tools, idempotency, ledger, read-back) — see lib/executor.ts.
     tools: wrapToolsWithExecutor(toolkit.getTools()),
-    maxSteps: 10, // AI SDK v4 (the Agent Toolkit 1.x line targets v4)
+    maxSteps: 12, // spec §1.2 Coordinator cap (AI SDK v4 — Toolkit 1.x targets v4)
   });
   return {
     text: result.text,
