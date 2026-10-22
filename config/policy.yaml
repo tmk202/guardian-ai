@@ -8,6 +8,8 @@ approvals:
 collections:
   max_rung: 3
   min_gap_hours_between_reminders: 24
+holds:
+  alert_min_usd: 0
 notifications:
   instant: [dispute_new, deadline_lt_48h, scam_suspect, hold_placed]
   daily_digest_at: "08:00"

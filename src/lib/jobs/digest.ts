@@ -10,11 +10,13 @@
 // same day returns the stored report with alreadyDone=true and writes
 // nothing new.
 import { DEFAULT_MERCHANT_ID, type GuardianStore } from "../db";
+import { memoryRead } from "../memory";
 import {
   runAnalyst,
   executorReaders,
   type PayPalReaders,
 } from "../workers/analyst";
+import { HOLD_RADAR_JOB } from "./hold-radar";
 
 export const DIGEST_JOB = "digest";
 const DAY_MS = 24 * 3600_000;
@@ -39,6 +41,18 @@ export interface MorningDigest {
   moneyYesterday: { amount: number; currency: string } | null;
   outstanding: { amount: number; currency: string; count: number };
   atRisk: { amount: number; currency: string; open_disputes: number };
+  /** held payments as tracked by the Hold Radar (Phase 3A, memory kind C) */
+  holds: {
+    total: number;
+    currency: string;
+    count: number;
+    /** soonest ESTIMATED release among tracked holds, when one exists */
+    nextEstimatedRelease: {
+      transaction_id: string;
+      amount: number;
+      estimated_release_at: string;
+    } | null;
+  };
   overdueInvoices: {
     invoice_id: string;
     amount: number;
@@ -115,7 +129,12 @@ export async function runDigest(
     }
   }
   if (cursor.lastDate === dateStr && cursor.report) {
-    return { ...cursor.report, alreadyDone: true };
+    // Reports stored before Phase 3A have no holds block — normalise.
+    return {
+      ...cursor.report,
+      holds: cursor.report.holds ?? { total: 0, currency: "USD", count: 0, nextEstimatedRelease: null },
+      alreadyDone: true,
+    };
   }
 
   const notes: string[] = [];
@@ -144,6 +163,42 @@ export async function runDigest(
     degraded = true;
     notes.push(
       `Analyst read failed (${e instanceof Error ? e.message.slice(0, 160) : String(e)}); money figures are missing from this digest.`
+    );
+  }
+
+  // ---- holds (Hold Radar memory, Phase 3A) ----------------------------------
+  // The radar job maintains one kind-C entry per held transaction; the
+  // digest only reads them. Estimates stay labelled estimates.
+  const holdEntries = memoryRead(store, merchantId, { kind: "C" }).filter(
+    (e) => e.entityKey.startsWith("hold:") && e.body.status === "held"
+  );
+  const holdsCurrency = (holdEntries[0]?.body.currency as string) ?? "USD";
+  let holdsTotal = 0;
+  let nextRelease: MorningDigest["holds"]["nextEstimatedRelease"] = null;
+  for (const e of holdEntries) {
+    const amount = Number(e.body.amount ?? 0);
+    if ((e.body.currency as string | undefined) === holdsCurrency && Number.isFinite(amount)) {
+      holdsTotal += amount;
+    }
+    const eta = e.body.estimated_release_at as string | null | undefined;
+    if (eta && (!nextRelease || eta < nextRelease.estimated_release_at)) {
+      nextRelease = {
+        transaction_id: String(e.body.transaction_id ?? e.entityKey.slice("hold:".length)),
+        amount: Number.isFinite(amount) ? amount : 0,
+        estimated_release_at: eta,
+      };
+    }
+  }
+  const holds: MorningDigest["holds"] = {
+    total: Math.round(holdsTotal * 100) / 100,
+    currency: holdsCurrency,
+    count: holdEntries.length,
+    nextEstimatedRelease: nextRelease,
+  };
+  const holdRadarState = store.jobState.get(HOLD_RADAR_JOB, merchantId);
+  if (holdRadarState?.last_status === "unavailable") {
+    notes.push(
+      "Hold tracking is unavailable: the Transaction Search scope is not enabled on the PayPal app, so held amounts cannot be seen yet."
     );
   }
 
@@ -219,6 +274,16 @@ export async function runDigest(
   lines.push(
     `At risk: ${money(atRisk.amount, atRisk.currency)} (${atRisk.open_disputes} open dispute(s))`
   );
+  lines.push(
+    holds.count > 0
+      ? `On hold: ${money(holds.total, holds.currency)} across ${holds.count} held payment(s)`
+      : "On hold: none tracked"
+  );
+  if (holds.nextEstimatedRelease) {
+    lines.push(
+      `Next estimated release: ${money(holds.nextEstimatedRelease.amount, holds.currency)} on ${holds.nextEstimatedRelease.estimated_release_at.slice(0, 10)} (estimate)`
+    );
+  }
   for (const d of upcomingDeadlines) {
     lines.push(`Deadline <7d: ${d.caseId} — due ${d.deadlineAt} (${d.hoursLeft}h left)`);
   }
@@ -239,6 +304,7 @@ export async function runDigest(
     moneyYesterday,
     outstanding,
     atRisk,
+    holds,
     overdueInvoices,
     upcomingDeadlines,
     unhandledAlerts,
@@ -259,6 +325,7 @@ export async function runDigest(
       date: dateStr,
       money_in: moneyYesterday,
       outstanding,
+      holds: { total: holds.total, currency: holds.currency, count: holds.count },
       overdue: overdueInvoices.map((o) => o.invoice_id),
       deadlines: upcomingDeadlines.map((d) => d.caseId),
       alerts: unhandledAlerts.length,

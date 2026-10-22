@@ -19,6 +19,10 @@ export interface GuardianPolicy {
     max_rung: number;
     min_gap_hours_between_reminders: number;
   };
+  holds: {
+    /** instant-alert threshold for newly detected holds (Phase 3A) */
+    alert_min_usd: number;
+  };
   notifications: {
     instant: string[];
     daily_digest_at: string;
@@ -34,6 +38,7 @@ export interface GuardianPolicy {
 export const DEFAULT_POLICY: GuardianPolicy = {
   approvals: { default: "require_human", auto_below_usd: 0, expire_after_hours: 24 },
   collections: { max_rung: 3, min_gap_hours_between_reminders: 24 },
+  holds: { alert_min_usd: 0 },
   notifications: {
     instant: ["dispute_new", "deadline_lt_48h", "scam_suspect", "hold_placed"],
     daily_digest_at: "08:00",
@@ -52,6 +57,8 @@ approvals:
 collections:
   max_rung: 3
   min_gap_hours_between_reminders: 24
+holds:
+  alert_min_usd: 0
 notifications:
   instant: [dispute_new, deadline_lt_48h, scam_suspect, hold_placed]
   daily_digest_at: "08:00"
