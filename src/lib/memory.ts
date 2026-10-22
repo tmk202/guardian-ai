@@ -6,7 +6,8 @@
 // rules of §2.4 on top of GuardianStore.memory:
 //
 //  1. Durable facts only. Kinds A (merchant profile), C (case memory) and
-//     D (episodic notes) land here in Phase 1; B/E/F arrive in later phases.
+//     D (episodic notes) landed in Phase 1; B (customer memory) joined in
+//     Phase 4 (§2.3: the Coordinator maintains B). E/F arrive later.
 //     Process data (tool-call trails, progress) belongs to the ledger and is
 //     rejected here.
 //  2. Inferences must be labelled (`inferred: true` in the body) and carry
@@ -14,15 +15,16 @@
 //  3. No secrets. A write whose body contains credential-looking fields is
 //     rejected outright; the error names the field path, never the value.
 //  4. Contradictions: the newer sourced fact wins, but the old entry is
-//     marked `superseded_by` — never silently deleted. Kinds A and C are
+//     marked `superseded_by` — never silently deleted. Kinds A, B and C are
 //     single-record-per-entity, so a differing write for the same entity
 //     supersedes the active one; kind D is a timeline and appends.
 //  Every write requires a source, so any entry can answer "how do you know?"
 import type { GuardianStore, MemoryEntryRow } from "./db";
 import { canonicalJson } from "./hash";
 
-export type MemoryKind = "A" | "C" | "D";
-export const MEMORY_KINDS_PHASE1: readonly MemoryKind[] = ["A", "C", "D"];
+export type MemoryKind = "A" | "B" | "C" | "D";
+/** Writable kinds: A/C/D since Phase 1, B added in Phase 4. E/F stay shut. */
+export const MEMORY_KINDS_PHASE1: readonly MemoryKind[] = ["A", "B", "C", "D"];
 
 export class MemoryWriteError extends Error {
   constructor(message: string) {
@@ -144,7 +146,7 @@ export function memoryWrite(
 ): MemoryWriteResult {
   if (!MEMORY_KINDS_PHASE1.includes(input.kind)) {
     throw new MemoryWriteError(
-      `Memory kind "${input.kind}" is not writable in Phase 1 (only A, C, D)`
+      `Memory kind "${input.kind}" is not writable (writable kinds: A, B, C, D — E/F arrive in later phases)`
     );
   }
   if (!input.source || !input.source.trim()) {
@@ -205,7 +207,7 @@ export function memoryWrite(
   // §2.4 rule 4: supersede, never silently delete.
   const toSupersede = new Set<number>();
   if (input.supersedes !== undefined) toSupersede.add(input.supersedes);
-  if (input.kind === "A" || input.kind === "C") {
+  if (input.kind === "A" || input.kind === "B" || input.kind === "C") {
     for (const row of existing) {
       if (row.id !== id && canonicalJson(JSON.parse(row.body_json)) !== bodyJson) {
         toSupersede.add(row.id);
