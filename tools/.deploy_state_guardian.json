@@ -4,10 +4,11 @@
  "package.json": "4471dd04b0b09cf815a9567669ac928c5cf40004",
  "src/app/api/chat/route.ts": "f50cb7e9148b4a50211fb8b0740237d5f47282d3",
  "src/app/layout.tsx": "63bef484a9856ac11efe9d5bf8aaa8e15d9c39c4",
- "src/app/page.tsx": "b25e07d1e499ef0135f8713c18c28d7690fd2f39",
- "src/lib/agent.ts": "09ac29337af8c3a453673461a1583cc3978fceaa",
+ "src/app/page.tsx": "a001ab13a5d4d4b2e26c1a57999cdc1ce0888fea",
+ "src/lib/agent.ts": "0c62675e76b41950679b1b3dfc38b48e8c28dfa2",
  "src/lib/disputes.ts": "3d02804c5a855985ae32628319909658a47afb3c",
  "src/lib/guardrail.ts": "55b4c5136659006404f5499fcdd1266546008add",
  "src/lib/paypal.ts": "c83872e64560220438e1a93f9b4054bf59debec8",
- "tsconfig.json": "5db2d8db0c5ecf2a2aa45c7acacf12eb91b65661"
+ "tsconfig.json": "5db2d8db0c5ecf2a2aa45c7acacf12eb91b65661",
+ "src/lib/demo.ts": "359046f26f2793537e75b59f3e945e994db68e7f"
 }

@@ -53,14 +53,27 @@ export function runDemo(prompt: string) {
   let steps: Step[];
 
   if (p.includes("dispute") || p.includes("claim") || p.includes("worried")) {
-    steps = [step("list_disputes"), step("get_dispute", { dispute_id: DEMO.dispute.id }), step("provide_evidence", { dispute_id: DEMO.dispute.id })];
+    steps = [step("list_disputes"), step("get_dispute", { dispute_id: DEMO.dispute.id })];
     text =
       `You have 1 open dispute to know about:\n\n` +
       `Case ${DEMO.dispute.id} — $${DEMO.dispute.amount} ${DEMO.dispute.currency}\n` +
       `Reason: buyer says the item was not received (${DEMO.dispute.reason}).\n` +
       `Status: ${DEMO.dispute.status}.\n\n` +
-      `I found the shipment (${DEMO.dispute.carrier} tracking ${DEMO.dispute.tracking}) and prepared an evidence package: ${DEMO.dispute.evidence}. ` +
-      `Evidence is only ever submitted after your approval — in this sandbox case it is already on file with PayPal.`;
+      `I found the shipment (${DEMO.dispute.carrier} tracking ${DEMO.dispute.tracking}) and prepared an evidence package for you. ` +
+      `I never submit evidence without your approval — review the package below and approve when you're ready.`;
+    return {
+      text,
+      steps,
+      mode: "demo" as const,
+      approval: {
+        kind: "provide_evidence",
+        caseId: DEMO.dispute.id,
+        evidenceType: "PROOF_OF_FULFILLMENT",
+        carrier: DEMO.dispute.carrier,
+        tracking: DEMO.dispute.tracking,
+        amount: `$${DEMO.dispute.amount} ${DEMO.dispute.currency}`,
+      },
+    };
   } else if (p.includes("hasn't paid") || p.includes("hasnt paid") || p.includes("unpaid") || p.includes("owe") || p.includes("who")) {
     steps = [step("list_invoices", { status: "SENT,UNPAID" })];
     text =
@@ -87,7 +100,7 @@ export function runDemo(prompt: string) {
       `Money report:\n\n` +
       `IN: $${DEMO.invoice120.amount} ${DEMO.invoice120.currency} — "${DEMO.invoice120.item}" invoice paid (transaction ${DEMO.invoice120.transactionId}).\n` +
       `STILL OUT: $${DEMO.invoice450.amount} — invoice ${DEMO.invoice450.id} sent, awaiting payment.\n` +
-      `UNDER REVIEW: $${DEMO.dispute.amount} — dispute ${DEMO.dispute.id}; your evidence is already submitted, so this is waiting on PayPal, not on you.`;
+      `UNDER REVIEW: $${DEMO.dispute.amount} — dispute ${DEMO.dispute.id}; your evidence package is ready and waiting for your approval to submit.`;
   } else {
     steps = [];
     text =
