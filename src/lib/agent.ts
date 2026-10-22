@@ -7,13 +7,28 @@
 // Agent Toolkit tools. Sensitive tools pass the guardrail approval layer.
 import { generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createPayPalToolkit } from "./paypal";
 
-// The brain's key comes from AI_API_KEY (documented in .env.example);
-// OPENAI_API_KEY is accepted as a fallback.
-const openai = createOpenAI({
-  apiKey: process.env.AI_API_KEY || process.env.OPENAI_API_KEY,
-});
+// The brain is provider-agnostic (Vercel AI SDK). Pick with AI_PROVIDER:
+// - "openai": key from AI_API_KEY or OPENAI_API_KEY, model default gpt-4o-mini
+// - "google": key from AI_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY,
+//   model default gemini-2.0-flash (free-tier AI Studio keys work)
+function pickModel() {
+  const provider =
+    process.env.AI_PROVIDER ||
+    (process.env.GOOGLE_GENERATIVE_AI_API_KEY ? "google" : "openai");
+  if (provider === "google") {
+    const google = createGoogleGenerativeAI({
+      apiKey: process.env.AI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+    });
+    return google(process.env.AI_MODEL || "gemini-2.0-flash");
+  }
+  const openai = createOpenAI({
+    apiKey: process.env.AI_API_KEY || process.env.OPENAI_API_KEY,
+  });
+  return openai(process.env.AI_MODEL || "gpt-4o-mini");
+}
 
 export const SYSTEM_PROMPT = `You are Guardian, an AI employee that operates the user's PayPal (sandbox) account.
 
@@ -32,9 +47,8 @@ Rules:
 
 export async function runGuardian(prompt: string) {
   const toolkit = createPayPalToolkit();
-  const modelId = process.env.AI_MODEL || "gpt-4o-mini";
   const result = await generateText({
-    model: openai(modelId),
+    model: pickModel(),
     system: SYSTEM_PROMPT,
     prompt,
     tools: toolkit.getTools(),
