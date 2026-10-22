@@ -17,6 +17,7 @@ import {
   type PayPalReaders,
 } from "../workers/analyst";
 import { HOLD_RADAR_JOB } from "./hold-radar";
+import { lastReconcileSummary } from "./reconcile-report";
 
 export const DIGEST_JOB = "digest";
 const DAY_MS = 24 * 3600_000;
@@ -67,6 +68,14 @@ export interface MorningDigest {
     amount_usd: number | null;
     created_at: string;
   }[];
+  /** last reconciliation report's verdict counts (Phase 5C); lastRunAt
+   *  is null when no report has ever run for this merchant */
+  reconciliation: {
+    matched: number;
+    mismatched: number;
+    unverifiable: number;
+    lastRunAt: string | null;
+  };
   notes: string[];
   text: string;
   ledgerId?: number;
@@ -129,10 +138,17 @@ export async function runDigest(
     }
   }
   if (cursor.lastDate === dateStr && cursor.report) {
-    // Reports stored before Phase 3A have no holds block — normalise.
+    // Reports stored before Phase 3A have no holds block, and reports
+    // stored before Phase 5C have no reconciliation block — normalise.
     return {
       ...cursor.report,
       holds: cursor.report.holds ?? { total: 0, currency: "USD", count: 0, nextEstimatedRelease: null },
+      reconciliation: cursor.report.reconciliation ?? {
+        matched: 0,
+        mismatched: 0,
+        unverifiable: 0,
+        lastRunAt: null,
+      },
       alreadyDone: true,
     };
   }
@@ -258,6 +274,17 @@ export async function runDigest(
     created_at: a.created_at,
   }));
 
+  // ---- reconciliation (Phase 5C): quote the last report, never re-run it --
+  const reconSummary = lastReconcileSummary(store, merchantId);
+  const reconciliation: MorningDigest["reconciliation"] = reconSummary
+    ? {
+        matched: reconSummary.matched,
+        mismatched: reconSummary.mismatched,
+        unverifiable: reconSummary.unverifiable,
+        lastRunAt: reconSummary.lastRunAt,
+      }
+    : { matched: 0, mismatched: 0, unverifiable: 0, lastRunAt: null };
+
   // ---- text summary ----------------------------------------------------------
   const lines: string[] = [`Guardian morning digest — ${dateStr} (${tz})`];
   lines.push(
@@ -287,6 +314,11 @@ export async function runDigest(
   for (const d of upcomingDeadlines) {
     lines.push(`Deadline <7d: ${d.caseId} — due ${d.deadlineAt} (${d.hoursLeft}h left)`);
   }
+  lines.push(
+    reconciliation.lastRunAt
+      ? `Reconciliation: ${reconciliation.matched} matched / ${reconciliation.mismatched} mismatched (${reconciliation.unverifiable} unverifiable) — last run ${reconciliation.lastRunAt.slice(0, 10)}`
+      : "Reconciliation: no report has run yet"
+  );
   lines.push(`New instant alerts: ${unhandledAlerts.length}`);
   for (const p of pendingApprovals) {
     lines.push(
@@ -309,6 +341,7 @@ export async function runDigest(
     upcomingDeadlines,
     unhandledAlerts,
     pendingApprovals,
+    reconciliation,
     notes,
     text: lines.join("\n"),
   };
@@ -330,6 +363,12 @@ export async function runDigest(
       deadlines: upcomingDeadlines.map((d) => d.caseId),
       alerts: unhandledAlerts.length,
       pending_approvals: pendingApprovals.map((p) => p.id),
+      reconciliation: {
+        matched: reconciliation.matched,
+        mismatched: reconciliation.mismatched,
+        unverifiable: reconciliation.unverifiable,
+        last_run_at: reconciliation.lastRunAt,
+      },
     }),
   });
   digest.ledgerId = ledgerId;
