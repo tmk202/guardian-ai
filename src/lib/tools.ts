@@ -78,7 +78,7 @@ const evidenceSchema = z.object({
     .min(1),
 });
 
-function evidenceMatches(existing: any, wanted: EvidenceInput): boolean {
+export function evidenceMatches(existing: any, wanted: EvidenceInput): boolean {
   if (!existing || existing.evidence_type !== wanted.evidence_type) return false;
   const wantedTracking = wanted.evidence_info?.tracking_info?.[0]?.tracking_number;
   if (!wantedTracking) return true;
@@ -123,12 +123,25 @@ function provideEvidenceExpect(
   return args.evidences.every((ev) => onFile.some((e) => evidenceMatches(e, ev)));
 }
 
-let coreRegistered = false;
+const coreRegisteredFor = new WeakSet<GuardianExecutor>();
 
-/** Register the custom REST tool(s) on the shared executor (idempotent). */
+const disputeIdSchema = z.object({ dispute_id: z.string().min(1) });
+
+/** Register the custom REST tool(s) on an executor (idempotent per executor). */
 export function registerCoreTools(executor: GuardianExecutor = getExecutor()): void {
-  if (coreRegistered) return;
-  coreRegistered = true;
+  if (coreRegisteredFor.has(executor)) return;
+  coreRegisteredFor.add(executor);
+  // get_dispute (READ) — the watchers' read path (deadline radar, reconcile
+  // sweep, §6). The toolkit exposes the same call inside the agent loop;
+  // this registration gives non-agent callers the executor path: ledgered,
+  // validated, never a side door.
+  executor.register({
+    name: "get_dispute",
+    class: "READ",
+    schema: disputeIdSchema,
+    entityOf: (args) => String(args.dispute_id),
+    handler: async (args) => getDispute(args.dispute_id),
+  });
   executor.register({
     name: "provide_evidence",
     class: "SENSITIVE",

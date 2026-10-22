@@ -64,7 +64,15 @@ export interface ApprovalRow {
   expires_at: string;
 }
 
-export type LedgerKind = "tool_call" | "approval" | "job" | "memory" | "system";
+export type LedgerKind =
+  | "tool_call"
+  | "approval"
+  | "job"
+  | "memory"
+  | "system"
+  // Phase 1D: instant-severity alerts raised by triage / watchers (§6).
+  // Stored in the same ledger so every alert is auditable like any action.
+  | "alert";
 
 export interface LedgerRow {
   id: number;
@@ -132,6 +140,9 @@ export interface GuardianStore {
     findSuccessByIdempotencyKey(key: string): LedgerRow | undefined;
     list(merchantId: string, limit?: number): LedgerRow[];
     byId(id: number): LedgerRow | undefined;
+    /** rows still flagged RECONCILE_NEEDED — the reconcile sweep's worklist */
+    flagged(merchantId: string): LedgerRow[];
+    setReconcileFlag(id: number, flag: boolean): void;
   };
   jobState: {
     get(jobName: string, merchantId: string): JobStateRow | undefined;
@@ -140,6 +151,7 @@ export interface GuardianStore {
   events: {
     add(row: EventRow): boolean; // false when event_id already seen (dedupe)
     get(eventId: string): EventRow | undefined;
+    markProcessed(eventId: string, at?: string): void;
   };
   close(): void;
 }
@@ -328,6 +340,13 @@ export class SqliteGuardianStore implements GuardianStore {
       list: (merchantId, limit = 100) =>
         d.prepare("SELECT * FROM ledger WHERE merchant_id = ? ORDER BY id DESC LIMIT ?").all(merchantId, limit) as unknown as LedgerRow[],
       byId: (id) => d.prepare("SELECT * FROM ledger WHERE id = ?").get(id) as LedgerRow | undefined,
+      flagged: (merchantId) =>
+        d
+          .prepare("SELECT * FROM ledger WHERE merchant_id = ? AND reconcile_flag = 1 ORDER BY id")
+          .all(merchantId) as unknown as LedgerRow[],
+      setReconcileFlag: (id, flag) => {
+        d.prepare("UPDATE ledger SET reconcile_flag = ? WHERE id = ?").run(flag ? 1 : 0, id);
+      },
     };
     this.jobState = {
       get: (jobName, merchantId) =>
@@ -349,6 +368,9 @@ export class SqliteGuardianStore implements GuardianStore {
       },
       get: (eventId) =>
         d.prepare("SELECT * FROM events_inbox WHERE event_id = ?").get(eventId) as EventRow | undefined,
+      markProcessed: (eventId, at) => {
+        d.prepare("UPDATE events_inbox SET processed_at = ? WHERE event_id = ?").run(at ?? nowIso(), eventId);
+      },
     };
   }
 
