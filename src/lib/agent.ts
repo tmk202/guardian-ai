@@ -10,6 +10,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createPayPalToolkit } from "./paypal";
 import { runDemo } from "./demo";
+import { registerCoreTools, wrapToolsWithExecutor } from "./tools";
 
 // The brain is provider-agnostic (Vercel AI SDK). Pick with AI_PROVIDER:
 // - "openai": key from AI_API_KEY or OPENAI_API_KEY, model default gpt-4o-mini
@@ -57,11 +58,14 @@ export async function runGuardian(prompt: string) {
   if (!hasKey) return runDemo(prompt);
 
   const toolkit = createPayPalToolkit();
+  registerCoreTools();
   const result = await generateText({
     model: pickModel(),
     system: SYSTEM_PROMPT,
     prompt,
-    tools: toolkit.getTools(),
+    // Every tool call passes the executor (validation, approval gate for
+    // SENSITIVE tools, idempotency, ledger, read-back) — see lib/executor.ts.
+    tools: wrapToolsWithExecutor(toolkit.getTools()),
     maxSteps: 10, // AI SDK v4 (the Agent Toolkit 1.x line targets v4)
   });
   return {

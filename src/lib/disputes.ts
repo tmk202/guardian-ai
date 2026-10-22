@@ -46,6 +46,24 @@ export async function getAccessToken(): Promise<string> {
 }
 
 /**
+ * Read one dispute by id (GET /v1/customer/disputes/{id}).
+ * Used as the executor read-back for provide_evidence and by the evidence
+ * handler to check what is already on file before submitting.
+ */
+export async function getDispute(disputeId: string, accessToken?: string) {
+  const token = accessToken ?? (await getAccessToken());
+  const res = await fetch(
+    `${SANDBOX_API}/v1/customer/disputes/${encodeURIComponent(disputeId)}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`get dispute failed: ${res.status} ${text}`);
+  }
+  return text ? JSON.parse(text) : {};
+}
+
+/**
  * Submit evidence for a dispute. Must pass the approval layer before calling.
  * Returns the raw PayPal response (200 + HATEOAS links on success).
  */
