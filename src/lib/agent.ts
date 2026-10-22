@@ -5,12 +5,13 @@
 //
 // The brain is any chat model via the Vercel AI SDK; the hands are the PayPal
 // Agent Toolkit tools. Sensitive tools pass the guardrail approval layer.
-import { generateText } from "ai";
+import { generateText, type LanguageModel } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createPayPalToolkit } from "./paypal";
 import { runDemo } from "./demo";
 import { registerCoreTools, wrapToolsWithExecutor } from "./tools";
+import type { GuardianExecutor } from "./executor";
 import {
   buildCoordinatorPrompt,
   COORDINATOR_PROMPT_VERSION,
@@ -22,6 +23,10 @@ export { COORDINATOR_PROMPT_VERSION };
 // - "openai": key from AI_API_KEY or OPENAI_API_KEY, model default gpt-4o-mini
 // - "google": key from AI_API_KEY or GOOGLE_GENERATIVE_AI_API_KEY,
 //   model default gemini-2.0-flash (free-tier AI Studio keys work)
+// - "ollama": a local model served by Ollama's OpenAI-compatible endpoint
+//   (Phase 2, the user's own machine path). No API key exists to lose —
+//   selecting the provider IS the opt-in. Base URL from OLLAMA_BASE_URL,
+//   model default llama3.1.
 function pickModel() {
   const provider =
     process.env.AI_PROVIDER ||
@@ -32,10 +37,27 @@ function pickModel() {
     });
     return google(process.env.AI_MODEL || "gemini-2.0-flash");
   }
+  if (provider === "ollama") {
+    const ollama = createOpenAI({
+      baseURL: process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434/v1",
+      apiKey: "ollama", // local server ignores it; the SDK requires a value
+    });
+    return ollama(process.env.AI_MODEL || "llama3.1");
+  }
   const openai = createOpenAI({
     apiKey: process.env.AI_API_KEY || process.env.OPENAI_API_KEY,
   });
   return openai(process.env.AI_MODEL || "gpt-4o-mini");
+}
+
+/** Is a live brain configured? Ollama counts: it is a deliberate opt-in. */
+export function hasBrain(): boolean {
+  return Boolean(
+    process.env.AI_API_KEY ||
+      process.env.OPENAI_API_KEY ||
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+      process.env.AI_PROVIDER === "ollama"
+  );
 }
 
 // Coordinator system prompt v1 (ARCHITECTURE-DETAIL.md §3.1 + charter §3.0)
@@ -56,25 +78,29 @@ function coordinatorVars() {
 
 export const SYSTEM_PROMPT = buildCoordinatorPrompt(coordinatorVars());
 
-export async function runGuardian(prompt: string) {
-  // No LLM key configured -> demo mode: a scripted walkthrough built from
-  // our real PayPal sandbox runs (src/lib/demo.ts). With any key present,
-  // the live agent below runs instead.
-  const hasKey =
-    process.env.AI_API_KEY ||
-    process.env.OPENAI_API_KEY ||
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (!hasKey) return runDemo(prompt);
-
-  const toolkit = createPayPalToolkit();
-  registerCoreTools();
+/**
+ * The live agent loop, split out of runGuardian so tests can drive it
+ * with a mock language model and a test toolset — proving prompt v1 →
+ * tool (through the executor) → answer without any real LLM key (Phase 2D).
+ */
+export async function runLiveAgent(
+  prompt: string,
+  model: LanguageModel,
+  opts?: { tools?: Record<string, any>; executor?: GuardianExecutor }
+) {
+  registerCoreTools(opts?.executor);
+  const tools =
+    opts?.tools ??
+    wrapToolsWithExecutor(createPayPalToolkit().getTools(), {
+      executor: opts?.executor,
+    });
   const result = await generateText({
-    model: pickModel(),
+    model,
     system: buildCoordinatorPrompt(coordinatorVars()),
     prompt,
     // Every tool call passes the executor (validation, approval gate for
     // SENSITIVE tools, idempotency, ledger, read-back) — see lib/executor.ts.
-    tools: wrapToolsWithExecutor(toolkit.getTools()),
+    tools,
     maxSteps: 12, // spec §1.2 Coordinator cap (AI SDK v4 — Toolkit 1.x targets v4)
   });
   return {
@@ -82,7 +108,18 @@ export async function runGuardian(prompt: string) {
     // Tool-call trail powers the activity log panel in the UI.
     steps: result.steps.map((s) => ({
       toolCalls: s.toolCalls.map((c) => ({ toolName: c.toolName, args: c.args })),
-      toolResults: (s.toolResults as any[]).map((r: any) => ({ toolName: r.toolName })),
+      toolResults: (s.toolResults as any[]).map((r: any) => ({
+        toolName: r.toolName,
+        result: r.result,
+      })),
     })),
   };
+}
+
+export async function runGuardian(prompt: string) {
+  // No brain configured -> demo mode: a scripted walkthrough built from
+  // our real PayPal sandbox runs (src/lib/demo.ts). With a key (or the
+  // ollama provider) present, the live agent runs instead.
+  if (!hasBrain()) return runDemo(prompt);
+  return runLiveAgent(prompt, pickModel());
 }
