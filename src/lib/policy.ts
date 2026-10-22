@@ -23,6 +23,28 @@ export interface GuardianPolicy {
     /** instant-alert threshold for newly detected holds (Phase 3A) */
     alert_min_usd: number;
   };
+  risk: {
+    /** trailing window the account-risk scan looks at (Phase 4A) */
+    window_days: number;
+    /** open disputes / invoices in window at/above this → WATCH */
+    watch_dispute_rate: number;
+    /** open disputes / invoices in window at/above this → HIGH */
+    high_dispute_rate: number;
+    /** money at risk (open disputes + holds) at/above this → WATCH */
+    watch_at_risk_usd: number;
+    /** money at risk at/above this → HIGH */
+    high_at_risk_usd: number;
+    /** a case deadline inside this many hours → WATCH */
+    deadline_watch_hours: number;
+    /** a case deadline inside this many hours → HIGH */
+    deadline_high_hours: number;
+  };
+  scam: {
+    /** ScamShield score at/above this → caution (Phase 4C) */
+    caution_at: number;
+    /** ScamShield score at/above this → likely_scam + instant alert */
+    likely_scam_at: number;
+  };
   notifications: {
     instant: string[];
     daily_digest_at: string;
@@ -39,6 +61,16 @@ export const DEFAULT_POLICY: GuardianPolicy = {
   approvals: { default: "require_human", auto_below_usd: 0, expire_after_hours: 24 },
   collections: { max_rung: 3, min_gap_hours_between_reminders: 24 },
   holds: { alert_min_usd: 0 },
+  risk: {
+    window_days: 30,
+    watch_dispute_rate: 0.03,
+    high_dispute_rate: 0.06,
+    watch_at_risk_usd: 250,
+    high_at_risk_usd: 1000,
+    deadline_watch_hours: 72,
+    deadline_high_hours: 48,
+  },
+  scam: { caution_at: 3, likely_scam_at: 5 },
   notifications: {
     instant: ["dispute_new", "deadline_lt_48h", "scam_suspect", "hold_placed"],
     daily_digest_at: "08:00",
@@ -59,6 +91,17 @@ collections:
   min_gap_hours_between_reminders: 24
 holds:
   alert_min_usd: 0
+risk:
+  window_days: 30
+  watch_dispute_rate: 0.03
+  high_dispute_rate: 0.06
+  watch_at_risk_usd: 250
+  high_at_risk_usd: 1000
+  deadline_watch_hours: 72
+  deadline_high_hours: 48
+scam:
+  caution_at: 3
+  likely_scam_at: 5
 notifications:
   instant: [dispute_new, deadline_lt_48h, scam_suspect, hold_placed]
   daily_digest_at: "08:00"

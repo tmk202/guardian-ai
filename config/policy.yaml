@@ -10,6 +10,17 @@ collections:
   min_gap_hours_between_reminders: 24
 holds:
   alert_min_usd: 0
+risk:
+  window_days: 30
+  watch_dispute_rate: 0.03
+  high_dispute_rate: 0.06
+  watch_at_risk_usd: 250
+  high_at_risk_usd: 1000
+  deadline_watch_hours: 72
+  deadline_high_hours: 48
+scam:
+  caution_at: 3
+  likely_scam_at: 5
 notifications:
   instant: [dispute_new, deadline_lt_48h, scam_suspect, hold_placed]
   daily_digest_at: "08:00"
