@@ -11,6 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import { DEFAULT_POLICY_YAML } from "./policy";
+import { PgGuardianStore } from "./db-pg";
 
 export interface MerchantRow {
   id: string;
@@ -404,13 +405,17 @@ export function defaultDbPath(): string {
 let singleton: GuardianStore | null = null;
 
 /**
- * Process-wide store. Seeds the sandbox merchant (Part 8 merchants row) the
- * first time it is opened so approvals/ledger always have a merchant to
- * attach to.
+ * Process-wide store. Backend selection (Phase 2A): when DATABASE_URL is
+ * set the Postgres implementation (db-pg.ts) is used, otherwise the
+ * built-in SQLite file store. Callers only ever see GuardianStore.
+ * Seeds the sandbox merchant (Part 8 merchants row) the first time it is
+ * opened so approvals/ledger always have a merchant to attach to.
  */
 export function getStore(): GuardianStore {
   if (singleton) return singleton;
-  const store = createStore(defaultDbPath());
+  const store = process.env.DATABASE_URL
+    ? new PgGuardianStore(process.env.DATABASE_URL)
+    : createStore(defaultDbPath());
   if (!store.merchants.get(DEFAULT_MERCHANT_ID)) {
     store.merchants.upsert({
       id: DEFAULT_MERCHANT_ID,
