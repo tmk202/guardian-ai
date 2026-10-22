@@ -1,0 +1,18 @@
+# Guardian merchant policy — see ARCHITECTURE-DETAIL.md section 5.3.
+# Changing the auto-approve threshold is a standing instruction: it must be
+# confirmed in the UI, never inferred from chat.
+approvals:
+  default: require_human
+  auto_below_usd: 0
+  expire_after_hours: 24
+collections:
+  max_rung: 3
+  min_gap_hours_between_reminders: 24
+notifications:
+  instant: [dispute_new, deadline_lt_48h, scam_suspect, hold_placed]
+  daily_digest_at: "08:00"
+  quiet_hours: "22:00-07:00"
+watchers:
+  deadline_scan: "every 1h"
+  hold_scan: "daily 07:30"
+  overdue_scan: "daily 08:30"

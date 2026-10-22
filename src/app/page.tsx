@@ -18,6 +18,8 @@ type Approval = {
   carrier: string;
   tracking: string;
   amount: string;
+  /** durable approval id (approvals store) when the server persisted one */
+  id?: string;
 };
 
 const PROMPTS = {
@@ -101,10 +103,10 @@ export default function Home() {
     }
   }
 
-  function decide(ok: boolean) {
+  async function decide(ok: boolean) {
     if (!approval || approval.status !== "pending") return;
     const now = new Date().toLocaleTimeString([], { hour12: false });
-    if (ok) {
+    const applyApproved = () => {
       setLog((l) => [{ toolName: "provide_evidence", summary: approval.data.caseId, at: now }, ...l]);
       setApproval({ ...approval, status: "approved" });
       setMessages((m) => [
@@ -114,11 +116,34 @@ export default function Home() {
           text: `Submitted. PayPal accepted the evidence package for case ${approval.data.caseId} (HTTP 200). The case stays under review until PayPal decides — I'll keep watching it for you.`,
         },
       ]);
-    } else {
+    };
+    const applyDismissed = () => {
       setApproval({ ...approval, status: "dismissed" });
       setMessages((m) => [
         ...m,
         { role: "agent", text: "No problem — I haven't submitted anything. The evidence package stays ready whenever you want it." },
+      ]);
+    };
+    // Durable path: the decision is recorded in the approvals store and, on
+    // approve, the frozen action runs through the server-side executor.
+    // Without a server-issued id (store unavailable) keep the client-only flow.
+    if (!approval.data.id) {
+      if (ok) applyApproved(); else applyDismissed();
+      return;
+    }
+    try {
+      const res = await fetch(`/api/approvals/${approval.data.id}/decide`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: ok ? "approved" : "dismissed" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || "Decision failed");
+      if (ok) applyApproved(); else applyDismissed();
+    } catch (e) {
+      setMessages((m) => [
+        ...m,
+        { role: "agent", error: true, text: `Something went wrong: ${e instanceof Error ? e.message : e}` },
       ]);
     }
   }
