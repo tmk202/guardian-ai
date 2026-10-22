@@ -18,6 +18,7 @@ import { getExecutor, type GuardianExecutor } from "../executor";
 import { registerCoreTools } from "../tools";
 import { memoryRead } from "../memory";
 import { extractDisputeDeadline } from "../triage";
+import { playbookFor, type PlaybookBucket } from "./outcomes";
 
 /** The PayPal read-backs the packet needs — injected so tests never touch the network. */
 export interface AppealPacketReaders {
@@ -37,6 +38,9 @@ export interface AppealPacketResult {
   /** every gap Guardian found, each already phrased "MISSING: ..." */
   missing: string[];
   sources: { storeCase: boolean; caseMemory: boolean; paypalDispute: boolean; paypalInvoice: boolean };
+  /** playbook bucket for this case's (reason × tracking), only when the
+   *  recorded sample is large enough to quote (Phase 5A) — else null */
+  playbook: PlaybookBucket | null;
 }
 
 interface EvidenceLine {
@@ -275,6 +279,21 @@ export async function buildAppealPacket(
     L.push("- None found — see \"What's missing\".");
   }
   L.push("");
+  // Playbook (Phase 5A): what happened in similar decided cases. Shown
+  // ONLY when the recorded sample for this (reason × tracking) bucket is
+  // large enough (playbookFor returns null below the threshold) — and
+  // always with n attached, so a small sample can never pose as a law.
+  const playbook = reason ? playbookFor(store, merchantId, reason, !!trackingLine) : null;
+  if (playbook) {
+    L.push("## Similar cases (Guardian playbook)");
+    L.push(
+      `- Recorded outcomes for reason ${playbook.reason} with ${playbook.hasTracking ? "tracking submitted" : "no tracking submitted"}: n=${playbook.n} — won ${playbook.won}, lost ${playbook.lost}, other ${playbook.other + playbook.unknown}.`
+    );
+    L.push(
+      `- Win rate over the ${playbook.decided} decided case(s): ${Math.round((playbook.winRate ?? 0) * 100)}%. A hint for which evidence to prioritise first — not a promise about this case.`
+    );
+    L.push("");
+  }
   L.push("## Order & invoice");
   if (invoice) {
     const items = Array.isArray(invoice.items) ? invoice.items : [];
@@ -316,6 +335,7 @@ export async function buildAppealPacket(
       paypalDispute: !!dispute,
       paypalInvoice: !!invoice,
     },
+    playbook,
   };
 }
 

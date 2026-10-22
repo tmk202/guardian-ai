@@ -7,7 +7,9 @@
 //
 //  1. Durable facts only. Kinds A (merchant profile), C (case memory) and
 //     D (episodic notes) landed in Phase 1; B (customer memory) joined in
-//     Phase 4 (§2.3: the Coordinator maintains B). E/F arrive later.
+//     Phase 4 (§2.3: the Coordinator maintains B); E (learned playbook
+//     stats / case outcomes) joined in Phase 5 (§2.3: the Memory Keeper
+//     maintains E from resolved cases). F stays shut.
 //     Process data (tool-call trails, progress) belongs to the ledger and is
 //     rejected here.
 //  2. Inferences must be labelled (`inferred: true` in the body) and carry
@@ -22,9 +24,9 @@
 import type { GuardianStore, MemoryEntryRow } from "./db";
 import { canonicalJson } from "./hash";
 
-export type MemoryKind = "A" | "B" | "C" | "D";
-/** Writable kinds: A/C/D since Phase 1, B added in Phase 4. E/F stay shut. */
-export const MEMORY_KINDS_PHASE1: readonly MemoryKind[] = ["A", "B", "C", "D"];
+export type MemoryKind = "A" | "B" | "C" | "D" | "E";
+/** Writable kinds: A/C/D since Phase 1, B added in Phase 4, E in Phase 5. F stays shut. */
+export const MEMORY_KINDS_PHASE1: readonly MemoryKind[] = ["A", "B", "C", "D", "E"];
 
 export class MemoryWriteError extends Error {
   constructor(message: string) {
@@ -146,7 +148,7 @@ export function memoryWrite(
 ): MemoryWriteResult {
   if (!MEMORY_KINDS_PHASE1.includes(input.kind)) {
     throw new MemoryWriteError(
-      `Memory kind "${input.kind}" is not writable (writable kinds: A, B, C, D — E/F arrive in later phases)`
+      `Memory kind "${input.kind}" is not writable (writable kinds: A, B, C, D, E — F arrives in a later phase)`
     );
   }
   if (!input.source || !input.source.trim()) {
@@ -204,10 +206,12 @@ export function memoryWrite(
     superseded_by: null,
   });
 
-  // §2.4 rule 4: supersede, never silently delete.
+  // §2.4 rule 4: supersede, never silently delete. Kind E holds ONE
+  // outcome record per case (entity_key = caseId), so like A/B/C a
+  // differing write for the same entity supersedes the active one.
   const toSupersede = new Set<number>();
   if (input.supersedes !== undefined) toSupersede.add(input.supersedes);
-  if (input.kind === "A" || input.kind === "B" || input.kind === "C") {
+  if (input.kind === "A" || input.kind === "B" || input.kind === "C" || input.kind === "E") {
     for (const row of existing) {
       if (row.id !== id && canonicalJson(JSON.parse(row.body_json)) !== bodyJson) {
         toSupersede.add(row.id);

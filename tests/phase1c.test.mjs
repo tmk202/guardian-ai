@@ -88,12 +88,13 @@ test("memory: source is required and process data is refused (§2.4 r1)", () => 
       }),
     /ledger/
   );
-  // Phase 1 rejected kind B here; Phase 4 opened B (Customer Memory, §2.2).
-  // Kinds E/F are still shut, so the rejection now stands on E.
+  // Phase 1 rejected kind B here; Phase 4 opened B (Customer Memory, §2.2);
+  // Phase 5 opened E (playbook outcomes, §2.2). Kind F is still shut, so
+  // the rejection now stands on F.
   assert.throws(
     () =>
       memoryWrite(store, {
-        merchantId: MERCHANT, kind: "E", entityKey: "cust-1",
+        merchantId: MERCHANT, kind: "F", entityKey: "cust-1",
         body: { name: "Later phase" }, source: "test",
       }),
     /not writable/
