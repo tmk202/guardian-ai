@@ -15,6 +15,12 @@ import {
   TRANSACTION_SEARCH_SCOPE,
   PayPalRestError,
 } from "../paypal-rest";
+import { analyzeFx, type FxReport } from "./fx-report";
+import { getMerchantProfile } from "../memory";
+
+/** FX breakdown (Phase 5B) — unavailable, with a reason, whenever the
+ *  transaction records it would be computed from cannot be read. */
+export type FxSection = FxReport | { status: "unavailable"; reason: string };
 
 export interface AnalystRange {
   /** ISO instant, inclusive */
@@ -54,6 +60,8 @@ export interface AnalystReport {
     status: string;
     due_date: string | null;
   }[];
+  /** currency-conversion cost breakdown over the range (Phase 5B) */
+  fx: FxSection;
   notes: string[];
 }
 
@@ -108,6 +116,10 @@ export async function runAnalyst(
 
   // ---- money in + held (transactions) -------------------------------------
   let moneyIn: MoneyFigure | null = null;
+  let fx: FxSection = {
+    status: "unavailable",
+    reason: "Transaction records were not read, so no FX breakdown can be produced.",
+  };
   const heldBag = new MoneyBag();
   let txScopeMissing = false;
   if (readers.getScopes) {
@@ -118,14 +130,21 @@ export async function runAnalyst(
     notes.push(
       "Transaction Search scope is not enabled on the PayPal app, so money_in and held amounts cannot be produced. Enable 'Transaction Search' in Developer Dashboard > Apps & Credentials, then Save changes. (Invoice totals are not a substitute and were not used.)"
     );
+    fx = {
+      status: "unavailable",
+      reason: "Transaction Search scope is not enabled on the PayPal app, so the transaction records an FX breakdown is computed from cannot be read.",
+    };
   } else {
     try {
       const tx = await readers.listTransactions({
         start_date: range.start,
         end_date: range.end,
       });
+      const details: any[] = Array.isArray(tx?.transaction_details)
+        ? tx.transaction_details
+        : [];
       const inBag = new MoneyBag();
-      for (const t of tx?.transaction_details ?? []) {
+      for (const t of details) {
         const info = t?.transaction_info ?? {};
         const amount = num(info.transaction_amount?.value);
         const cur = info.transaction_amount?.currency_code;
@@ -139,9 +158,23 @@ export async function runAnalyst(
           `Transactions in other currencies (${[...inBag.others].join(", ")}) were excluded from money_in, which is reported in ${inBag.currency}.`
         );
       }
+      // FX breakdown over the SAME records just read (Phase 5B) — the
+      // merchant's profile currency is the base; conversions into it are
+      // recognised only when the payload carries the conversion fields.
+      const profileCurrency = getMerchantProfile(store, merchantId)?.body.currency;
+      fx = analyzeFx(details, {
+        baseCurrency:
+          typeof profileCurrency === "string" && profileCurrency
+            ? profileCurrency
+            : inBag.currency ?? "USD",
+      });
     } catch (e) {
       const status = e instanceof PayPalRestError ? e.status : undefined;
       moneyIn = null;
+      fx = {
+        status: "unavailable",
+        reason: `Transactions read failed (${e instanceof Error ? e.message.slice(0, 160) : String(e)}), so no FX breakdown can be produced for this range.`,
+      };
       notes.push(
         status === 403 || /scope|NOT_AUTHORIZED/i.test(e instanceof Error ? e.message : "")
           ? "PayPal refused the transactions read (403): the Transaction Search scope appears to be missing, so money_in cannot be produced."
@@ -231,6 +264,7 @@ export async function runAnalyst(
       open_disputes: seenDisputes.size + supplemented,
     },
     top_unpaid: unpaid.slice(0, 5),
+    fx,
     notes,
   };
 }
