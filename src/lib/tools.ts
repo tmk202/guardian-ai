@@ -14,6 +14,11 @@ import {
   type ToolClass,
 } from "./executor";
 import { provideEvidence, getDispute, type EvidenceInput } from "./disputes";
+import {
+  listInvoicesRest,
+  listDisputesRest,
+  listTransactionsRest,
+} from "./paypal-rest";
 
 // --- Class map (§5.1). SENSITIVE is anchored in guardrail.SENSITIVE_TOOLS;
 // anything money-moving or legally final is listed here explicitly too.
@@ -150,6 +155,33 @@ export function registerCoreTools(executor: GuardianExecutor = getExecutor()): v
     handler: provideEvidenceHandler,
     readBack: provideEvidenceReadBack,
     expect: provideEvidenceExpect,
+  });
+  // Phase 2B — REST list readers for the Analyst worker / digest. These
+  // give non-agent callers the same executor path (validation, ledger)
+  // for list_invoices / list_disputes / list_transactions. Inside the
+  // agent loop the toolkit's own tools keep precedence: wrapTools passes
+  // its per-call handler, which the executor prefers over spec.handler.
+  executor.register({
+    name: "list_invoices",
+    class: "READ",
+    entityOf: () => "account",
+    handler: async () => listInvoicesRest(),
+  });
+  executor.register({
+    name: "list_disputes",
+    class: "READ",
+    entityOf: () => "account",
+    handler: async () => listDisputesRest(),
+  });
+  executor.register({
+    name: "list_transactions",
+    class: "READ",
+    schema: z.object({
+      start_date: z.string().min(1),
+      end_date: z.string().min(1),
+    }),
+    entityOf: () => "account",
+    handler: async (args) => listTransactionsRest(args),
   });
 }
 
