@@ -9,6 +9,7 @@ import { generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createPayPalToolkit } from "./paypal";
+import { runDemo } from "./demo";
 
 // The brain is provider-agnostic (Vercel AI SDK). Pick with AI_PROVIDER:
 // - "openai": key from AI_API_KEY or OPENAI_API_KEY, model default gpt-4o-mini
@@ -46,6 +47,15 @@ Rules:
 - Answer in the user's language, briefly, with the key numbers first.`;
 
 export async function runGuardian(prompt: string) {
+  // No LLM key configured -> demo mode: a scripted walkthrough built from
+  // our real PayPal sandbox runs (src/lib/demo.ts). With any key present,
+  // the live agent below runs instead.
+  const hasKey =
+    process.env.AI_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  if (!hasKey) return runDemo(prompt);
+
   const toolkit = createPayPalToolkit();
   const result = await generateText({
     model: pickModel(),
