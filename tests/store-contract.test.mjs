@@ -66,16 +66,17 @@ function runContract(label, makeStore) {
   test(`${label}: cases upsert/get/list`, () => {
     const store = makeStore();
     const m = freshMerchant();
+    const caseId = `PP-R-CONTRACT-${m}`; // run-unique: PG test DB persists across runs
     store.cases.upsert({
-      id: "PP-R-CONTRACT-1", merchant_id: m, body_json: "{}",
+      id: caseId, merchant_id: m, body_json: "{}",
       deadline_at: "2026-11-01T00:00:00.000Z", status: "UNDER_REVIEW",
     });
-    assert.equal(store.cases.get("PP-R-CONTRACT-1").status, "UNDER_REVIEW");
+    assert.equal(store.cases.get(caseId).status, "UNDER_REVIEW");
     store.cases.upsert({
-      id: "PP-R-CONTRACT-1", merchant_id: m, body_json: "{}",
+      id: caseId, merchant_id: m, body_json: "{}",
       deadline_at: "2026-11-02T00:00:00.000Z", status: "RESOLVED",
     });
-    assert.equal(store.cases.get("PP-R-CONTRACT-1").status, "RESOLVED");
+    assert.equal(store.cases.get(caseId).status, "RESOLVED");
     assert.equal(store.cases.list(m).length, 1);
     assert.equal(store.cases.list(freshMerchant()).length, 0);
     store.close();
@@ -105,18 +106,19 @@ function runContract(label, makeStore) {
   test(`${label}: ledger append/find-success/flagged toggle`, () => {
     const store = makeStore();
     const m = freshMerchant();
+    const key = `k-contract-${m}`; // run-unique, mirrors production keys embedding merchant+entity
     const badId = store.ledger.append({
       merchant_id: m, actor: "coordinator", kind: "tool_call", tool: "create_invoice",
-      result_json: JSON.stringify({ ok: false }), idempotency_key: "k-contract",
+      result_json: JSON.stringify({ ok: false }), idempotency_key: key,
     });
-    assert.equal(store.ledger.findSuccessByIdempotencyKey("k-contract"), undefined);
+    assert.equal(store.ledger.findSuccessByIdempotencyKey(key), undefined);
     const okId = store.ledger.append({
       merchant_id: m, actor: "coordinator", kind: "tool_call", tool: "create_invoice",
       result_json: JSON.stringify({ ok: true, data: { id: "INV2-X" } }),
-      idempotency_key: "k-contract", reconcile_flag: true,
+      idempotency_key: key, reconcile_flag: true,
     });
     assert.equal(typeof okId, "number");
-    assert.equal(store.ledger.findSuccessByIdempotencyKey("k-contract").id, okId);
+    assert.equal(store.ledger.findSuccessByIdempotencyKey(key).id, okId);
     assert.equal(store.ledger.byId(badId).tool, "create_invoice");
     assert.deepEqual(store.ledger.flagged(m).map((r) => r.id), [okId]);
     store.ledger.setReconcileFlag(okId, false);
