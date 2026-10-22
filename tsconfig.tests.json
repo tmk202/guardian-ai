@@ -1,0 +1,1 @@
+{"compilerOptions":{"esModuleInterop":true,"forceConsistentCasingInFileNames":true,"module":"node16","moduleResolution":"node16","outDir":"tests-dist","rootDir":"src","skipLibCheck":true,"strict":true,"target":"ES2022","types":["node"]},"include":["src/lib/db.ts","src/lib/policy.ts","src/lib/hash.ts","src/lib/approvals.ts","src/lib/executor.ts","src/lib/guardrail.ts"]}
