@@ -6,8 +6,14 @@
 // The brain is any chat model via the Vercel AI SDK; the hands are the PayPal
 // Agent Toolkit tools. Sensitive tools pass the guardrail approval layer.
 import { generateText } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { createPayPalToolkit } from "./paypal";
+
+// The brain's key comes from AI_API_KEY (documented in .env.example);
+// OPENAI_API_KEY is accepted as a fallback.
+const openai = createOpenAI({
+  apiKey: process.env.AI_API_KEY || process.env.OPENAI_API_KEY,
+});
 
 export const SYSTEM_PROMPT = `You are Guardian, an AI employee that operates the user's PayPal (sandbox) account.
 
