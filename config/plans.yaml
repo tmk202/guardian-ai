@@ -1,0 +1,17 @@
+# Guardian subscription plans — COMMERCIAL FRAMEWORK ONLY (Phase 5D).
+# No payment rail is connected and nothing is charged anywhere; see
+# BILLING.md. This file only defines WHO may use WHAT (entitlements),
+# enforced by src/lib/plans.ts. Prices are deliberately absent: pricing
+# is set from beta evidence (PHASES 5.1), not guessed here.
+# max_tracked_cases: null = no limit.
+plans:
+  free:
+    label: Free
+    max_merchants: 1
+    max_tracked_cases: 10
+    features: [digest, deadline-radar, hold-radar]
+  pro:
+    label: Pro
+    max_merchants: 5
+    max_tracked_cases: null
+    features: [digest, deadline-radar, hold-radar, analyst, collections, risk-scan, scam-shield, appeal-packet, outcomes-scan, reconcile-report]
