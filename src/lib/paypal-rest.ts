@@ -62,9 +62,57 @@ export async function getTokenInfo(): Promise<{ token: string; scopes: string[] 
   };
 }
 
+async function apiPost(pathname: string, body: unknown): Promise<any> {
+  const token = await getAccessToken();
+  const res = await fetch(`${SANDBOX_API}${pathname}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new PayPalRestError(
+      res.status,
+      `POST ${pathname} failed: ${res.status} ${text.slice(0, 300)}`
+    );
+  }
+  return text ? JSON.parse(text) : {};
+}
+
 /** GET /v2/invoicing/invoices — one page (100) is ample at sandbox scale. */
 export async function listInvoicesRest(): Promise<any> {
   return apiGet("/v2/invoicing/invoices?page=1&page_size=100&total_required=true");
+}
+
+/** GET /v2/invoicing/invoices/{id} — read-back pair for invoice writes. */
+export async function getInvoiceRest(invoiceId: string): Promise<any> {
+  return apiGet(`/v2/invoicing/invoices/${encodeURIComponent(invoiceId)}`);
+}
+
+/**
+ * POST /v2/invoicing/invoices/{id}/remind — PayPal answers 204 No Content.
+ * The subject/note are the merchant-approved text: the executor only lets
+ * this run behind an approval whose hash covers the exact args (§5.5).
+ */
+export async function sendInvoiceReminderRest(args: {
+  invoice_id: string;
+  subject?: string;
+  note?: string;
+  send_to_invoicer?: boolean;
+}): Promise<any> {
+  const payload: Record<string, unknown> = {
+    send_to_invoicer: args.send_to_invoicer ?? false,
+  };
+  if (args.subject) payload.subject = args.subject;
+  if (args.note) payload.note = args.note;
+  await apiPost(
+    `/v2/invoicing/invoices/${encodeURIComponent(args.invoice_id)}/remind`,
+    payload
+  );
+  return { status: "reminder_sent", invoice_id: args.invoice_id };
 }
 
 /** GET /v1/customer/disputes — the seller's dispute list. */

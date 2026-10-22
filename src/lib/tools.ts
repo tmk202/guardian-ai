@@ -18,6 +18,8 @@ import {
   listInvoicesRest,
   listDisputesRest,
   listTransactionsRest,
+  getInvoiceRest,
+  sendInvoiceReminderRest,
 } from "./paypal-rest";
 
 // --- Class map (§5.1). SENSITIVE is anchored in guardrail.SENSITIVE_TOOLS;
@@ -28,11 +30,14 @@ export const TOOL_CLASSES: Record<string, ToolClass> = {
   accept_dispute_claim: "SENSITIVE",
   provide_evidence: "SENSITIVE",
   pay_order: "SENSITIVE",
+  // SENSITIVE since Phase 3B — no money moves, but a reminder is outbound
+  // communication to a customer in the merchant's name; the exact text
+  // rides inside the approved args, so nothing unapproved can be sent.
+  send_invoice_reminder: "SENSITIVE",
   // WRITE — changes state, reversible, no money out
   create_invoice: "WRITE",
   send_invoice: "WRITE",
   cancel_sent_invoice: "WRITE",
-  send_invoice_reminder: "WRITE",
   create_order: "WRITE",
   create_shipment_tracking: "WRITE",
   create_product: "WRITE",
@@ -182,6 +187,34 @@ export function registerCoreTools(executor: GuardianExecutor = getExecutor()): v
     }),
     entityOf: () => "account",
     handler: async (args) => listTransactionsRest(args),
+  });
+  // Phase 3B — invoice read-back pair + the Collections reminder tool.
+  executor.register({
+    name: "get_invoice",
+    class: "READ",
+    schema: z.object({ invoice_id: z.string().min(1) }),
+    entityOf: (args) => String(args.invoice_id),
+    handler: async (args) => getInvoiceRest(args.invoice_id),
+  });
+  executor.register({
+    name: "send_invoice_reminder",
+    class: "SENSITIVE",
+    schema: z.object({
+      invoice_id: z.string().min(1),
+      subject: z.string().min(1).optional(),
+      note: z.string().optional(),
+      send_to_invoicer: z.boolean().optional(),
+    }),
+    entityOf: (args) => String(args.invoice_id),
+    // PayPal caps reminders at 2/day/invoice; a 24h dedupe window keeps
+    // Guardian at one approved send per invoice per day at most.
+    idempotencyWindowSec: IDEMPOTENCY_WINDOWS.send_invoice_reminder,
+    handler: async (args) => sendInvoiceReminderRest(args),
+    readBack: async (args) => getInvoiceRest(args.invoice_id),
+    // A reminder leaves no dedicated marker on the invoice record, so the
+    // read-back is existence-level (same standard as the toolkit pairs in
+    // READBACK_FOR): the invoice is still there, in a readable state.
+    expect: (rb: any) => !!rb && typeof rb.status === "string",
   });
 }
 

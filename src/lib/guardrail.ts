@@ -25,6 +25,10 @@ export const SENSITIVE_TOOLS = new Set([
   "accept_dispute_claim",
   "provide_evidence", // custom tool in disputes.ts
   "pay_order",
+  // Phase 3B: a reminder is communication sent to a customer in the
+  // merchant's name — outbound contact is sensitive even though no
+  // money moves. The exact subject/note are inside the approved args.
+  "send_invoice_reminder",
 ]);
 
 export function isSensitive(toolName: string): boolean {
