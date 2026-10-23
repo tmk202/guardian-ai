@@ -44,7 +44,7 @@ Proven on the real PayPal sandbox (scripts in `scripts/`):
 
 **Storage** — one `GuardianStore` interface with two interchangeable backends: SQLite (zero-infra default) and Postgres (selected by `DATABASE_URL`), verified by a shared contract test suite that runs the same behaviour tests against both.
 
-**Tests** — an automated suite of 80+ tests (81 passing, 1 environment-dependent skip at last run) covering the executor/approval gate, memory rules, both store backends, every worker and job, and the live-agent tool loop with a mock model — including proof that a sensitive tool call without approval never executes.
+**Tests** — an automated suite of 88 tests covering the executor/approval gate, memory rules, both store backends, every worker and job, and the live-agent tool loop with a mock model — including proof that a sensitive tool call without approval never executes. 81 run anywhere; the 7 Postgres store-contract tests join when a local Postgres test DB is available (full suite verified at 88/88).
 
 ## Architecture (short)
 
