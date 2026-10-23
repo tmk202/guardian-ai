@@ -161,7 +161,7 @@ export default function Home() {
           </div>
           <div>
             <h1>Guardian</h1>
-            <span className="badge"><span className="dot" /> PayPal Sandbox</span>
+            <span className="badge"><span className="dot" aria-hidden="true" /> PayPal Sandbox</span>
           </div>
         </div>
 
@@ -186,6 +186,10 @@ export default function Home() {
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M4 19h16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M8 15l3.5-4 3 2.5L19 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
             <span><span className="t">Money report</span><br /><span className="s">In · unpaid · on hold</span></span>
           </button>
+          <a className="job-btn" href="/briefing">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="5.5" width="16" height="15" rx="2.5" stroke="currentColor" strokeWidth="1.6" /><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /><path d="M8 14.5h5M8 17.5h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+            <span><span className="t">Morning briefing</span><br /><span className="s">Today's digest &amp; to-dos</span></span>
+          </a>
         </nav>
 
         <p className="guardrail">
@@ -289,7 +293,7 @@ export default function Home() {
 
       {/* ---------- activity ---------- */}
       <aside className="panel activity" aria-label="Activity log">
-        <h2><span className="live-dot" /> Activity</h2>
+        <h2><span className="live-dot" aria-hidden="true" /> Activity</h2>
         <div className="sub">Every PayPal action Guardian takes, in the open.</div>
         {log.length === 0 && <p className="empty">No actions yet. Ask Guardian to do something — its PayPal tool calls will appear here.</p>}
         {log.map((e, i) => (
