@@ -255,7 +255,10 @@ test("reconcile: a matching read-back closes the flag", async () => {
 test("reconcile: still mismatched after 24h raises one instant alert and keeps the flag", async () => {
   const store = setup();
   const id = flaggedRow(store, "send_invoice");
-  const later = new Date(NOW.getTime() + 25 * 3600_000);
+  // The store stamps ledger rows with the real wall clock, so "25h later"
+  // is measured from real now — anchoring to the fixed NOW made this test
+  // pass only while the real date was 2026-10-22 (time-bomb).
+  const later = new Date(Date.now() + 25 * 3600_000);
   const run1 = await runReconcileSweep(store, {
     now: later,
     readBacks: { send_invoice: async () => false },
